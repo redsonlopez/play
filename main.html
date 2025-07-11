@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Play</title>
+    <!-- Link para o Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos básicos para o corpo e o canvas */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c; /* Fundo escuro */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden; /* Evita barras de rolagem */
+        }
+        canvas {
+            background-color: #4a5568; /* Cor de fundo do canvas */
+            border: 2px solid #a0aec0; /* Borda do canvas */
+            border-radius: 0.5rem;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="640" height="480"></canvas>
+
+    <script>
+        // Obtém o elemento canvas e seu contexto 2D
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Dimensões das separações (informadas pelo usuário)
+        const HORIZONTAL_SEPARATION = 1; // 1px entre frames na horizontal
+        const INITIAL_HORIZONTAL_OFFSET = 1; // 1px de offset antes do primeiro frame de cada linha
+
+        // Objeto para armazenar o estado das teclas pressionadas
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false
+        };
+
+        // Objeto do personagem
+        const character = {
+            x: canvas.width / 2, // Posição X (centro)
+            y: canvas.height / 2, // Posição Y (centro)
+            width: 0, // Será definido dinamicamente pela animação atual
+            height: 0, // Será definido dinamicamente pela animação atual
+            speed: 3, // Velocidade de movimentação
+            currentAnimation: 'idle_f', // Animação inicial: espera para frente
+            currentFrame: 0,
+            frameTimer: 0,
+            frameDelay: 100, // Milissegundos por frame (quanto menor, mais rápido)
+            flipped: false, // Estado para controlar se o sprite deve ser espelhado horizontalmente
+            lastHorizontalDirection: 'left' // NOVO: Armazena a última direção horizontal para manter o espelhamento
+        };
+
+        // Mapeamento das animações e seus frames. Cada animação tem sua própria imagem.
+        const animations = {
+            // Animação Espera (Frente) - de 'Tyrant_Valvatorez_wait_f.png'
+            // ATENÇÃO: MEÇA A LARGURA E ALTURA EXATA DESTE FRAME NO SEU ARQUIVO PNG!
+            idle_f: {
+                image: new Image(),
+                frameWidth: 170,   // <--- ATUALIZADO: Largura do frame 'idle_f'
+                frameHeight: 186,  // <--- ATUALIZADO: Altura do frame 'idle_f'
+                frames: [], // Preencheremos dinamicamente
+                frameCount: 5, // Assumindo 5 frames para espera_f, ajuste se for diferente
+                speed: 120 // Velocidade da animação
+            },
+            // Animação Caminhar (Frente) - de 'Tyrant_Valvatorez_walk_f.png'
+            // ATENÇÃO: MEÇA A LARGURA E ALTURA EXATA DESTE FRAME NO SEU ARQUIVO PNG!
+            walk_f: {
+                image: new Image(),
+                frameWidth: 116,   // <--- AJUSTE AQUI
+                frameHeight: 186,  // <--- AJUSTE AQUI
+                frames: [], // Preencheremos dinamicamente
+                frameCount: 6, // Assumindo 6 frames para walk_f, ajuste se for diferente
+                speed: 100
+            }
+        };
+
+        // Define os caminhos das imagens para cada animação
+        animations.idle_f.image.src = "images/Tyrant_Valvatorez_wait_f.png";
+        animations.walk_f.image.src = "images/Tyrant_Valvatorez_walk_f.png";
+
+        // Preenche os arrays de frames para cada animação
+        // Como cada PNG é uma única linha de frames, sy é sempre 0.
+        // O sx é calculado com base na largura do frame e na separação horizontal.
+        Object.keys(animations).forEach(animName => {
+            const anim = animations[animName];
+            for (let i = 0; i < anim.frameCount; i++) {
+                anim.frames.push({
+                    sx: INITIAL_HORIZONTAL_OFFSET + i * (anim.frameWidth + HORIZONTAL_SEPARATION),
+                    sy: 0 // sy é 0 porque cada animação é um arquivo PNG separado
+                });
+            }
+        });
+
+        // Contador para garantir que todas as imagens foram carregadas
+        let imagesLoadedCount = 0;
+        const totalImagesToLoad = Object.keys(animations).length;
+
+        // Variável para armazenar o tempo do último frame
+        let lastFrameTime = 0; 
+
+        // Função para iniciar o loop do jogo somente após todas as imagens carregarem
+        function checkAllImagesLoaded() {
+            imagesLoadedCount++;
+            if (imagesLoadedCount === totalImagesToLoad) {
+                console.log("Todas as imagens de animação carregadas.");
+                // Define as dimensões iniciais do personagem com base na animação inicial
+                const initialAnimData = animations[character.currentAnimation];
+                if (initialAnimData) {
+                    character.width = initialAnimData.frameWidth;
+                    character.height = initialAnimData.frameHeight;
+                    // Ajusta a posição inicial para o centro com as dimensões corretas
+                    character.x = canvas.width / 2 - character.width / 2;
+                    character.y = canvas.height / 2 - character.height / 2;
+
+                    // Reinicia explicitamente o frame e o timer da animação inicial
+                    character.currentFrame = 0;
+                    character.frameTimer = 0;
+                }
+                
+                // INICIALIZA lastFrameTime AQUI para garantir que o primeiro deltaTime seja pequeno e preciso
+                lastFrameTime = performance.now(); 
+                gameLoop(lastFrameTime); // Passa o tempo inicial para o gameLoop
+            }
+        }
+
+        // Adiciona event listeners para carregar cada imagem
+        Object.values(animations).forEach(anim => {
+            anim.image.onload = checkAllImagesLoaded;
+            anim.image.onerror = () => {
+                console.error(`Erro ao carregar a imagem: ${anim.image.src}. Verifique o nome do arquivo e o caminho.`);
+                // Ainda tentamos iniciar o jogo, mas com um aviso visual
+                checkAllImagesLoaded();
+            };
+        });
+
+        // Função para atualizar o estado do jogo (movimentação e animação)
+        function updateGame(currentTime) {
+            // Calcula o deltaTime usando o tempo atual e o tempo do último frame
+            const deltaTime = currentTime - lastFrameTime;
+            lastFrameTime = currentTime; // Atualiza lastFrameTime para o próximo frame
+
+            let dx = 0;
+            let dy = 0;
+            let moving = false;
+            let newAnimation = character.currentAnimation;
+
+            // Lógica de movimentação baseada nas setas do teclado
+            if (keys.ArrowUp) {
+                dy = -1;
+                moving = true;
+            }
+            if (keys.ArrowDown) {
+                dy = 1;
+                moving = true;
+            }
+            if (keys.ArrowLeft) {
+                dx = -1;
+                moving = true;
+                character.flipped = false; // Não espelha para a esquerda
+                character.lastHorizontalDirection = 'left'; // Atualiza a última direção horizontal
+            }
+            if (keys.ArrowRight) {
+                dx = 1;
+                moving = true;
+                character.flipped = true; // Espelha para a direita
+                character.lastHorizontalDirection = 'right'; // Atualiza a última direção horizontal
+            }
+
+            // Se houver movimento horizontal ou vertical, define a animação de caminhada
+            if (dx !== 0 || dy !== 0) {
+                newAnimation = 'walk_f'; 
+                // A propriedade 'flipped' já foi definida pelo movimento horizontal,
+                // ou mantém seu estado se o movimento for puramente vertical.
+            } else {
+                // Se não houver movimento, define a animação de espera
+                newAnimation = 'idle_f';
+                // Define o estado 'flipped' com base na última direção horizontal
+                if (character.lastHorizontalDirection === 'right') {
+                    character.flipped = true;
+                } else {
+                    character.flipped = false;
+                }
+            }
+
+            // Atualiza a animação e as dimensões do personagem se for diferente
+            if (newAnimation !== character.currentAnimation) {
+                character.currentAnimation = newAnimation;
+                character.currentFrame = 0; // Reinicia o frame ao mudar de animação
+                character.frameTimer = 0;
+                
+                // Atualiza a largura e altura do personagem para a nova animação
+                const currentAnimData = animations[character.currentAnimation];
+                if (currentAnimData) {
+                    character.width = currentAnimData.frameWidth;
+                    character.height = currentAnimData.frameHeight;
+                }
+            }
+
+            // Normaliza o vetor de movimento para que a velocidade seja constante na diagonal
+            if (dx !== 0 && dy !== 0) {
+                const magnitude = Math.sqrt(dx * dx + dy * dy);
+                dx /= magnitude;
+                dy /= magnitude;
+            }
+
+            // Atualiza a posição do personagem
+            character.x += dx * character.speed;
+            character.y += dy * character.speed;
+
+            // Garante que o personagem não saia dos limites do canvas
+            character.x = Math.max(0, Math.min(canvas.width - character.width, character.x));
+            character.y = Math.max(0, Math.min(canvas.height - character.height, character.y));
+
+            // Lógica de animação de frames
+            character.frameTimer += deltaTime;
+            const currentAnimData = animations[character.currentAnimation];
+            if (currentAnimData && currentAnimData.frameCount > 0 && character.frameTimer >= currentAnimData.speed) {
+                character.currentFrame = (character.currentFrame + 1) % currentAnimData.frameCount;
+                character.frameTimer = 0;
+            }
+        }
+
+        // Função para desenhar os elementos do jogo no canvas
+        function drawGame() {
+            // Limpa o canvas a cada frame
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Desenha o personagem
+            const currentAnimData = animations[character.currentAnimation];
+            // Verifica se a imagem da animação atual e o frame existem
+            if (currentAnimData && currentAnimData.image.complete && currentAnimData.image.naturalWidth !== 0 &&
+                currentAnimData.frames.length > 0 && currentAnimData.frames[character.currentFrame]) {
+                
+                const frame = currentAnimData.frames[character.currentFrame];
+
+                ctx.save(); // Salva o estado atual do canvas
+
+                // Calcula a posição de desenho ajustada para o centro do personagem
+                const drawX = character.x + character.width / 2;
+                const drawY = character.y; 
+
+                if (character.flipped) {
+                    // Move o ponto de origem para o centro horizontal do personagem
+                    ctx.translate(drawX, drawY);
+                    // Espelha horizontalmente
+                    ctx.scale(-1, 1);
+                    // Desenha a imagem, mas ajusta o X para compensar a escala
+                    ctx.drawImage(
+                        currentAnimData.image, // Usa a imagem específica da animação
+                        frame.sx, // Source X no sprite sheet
+                        frame.sy, // Source Y no sprite sheet (sempre 0 para arquivos separados)
+                        currentAnimData.frameWidth,  // Largura do frame a ser cortado
+                        currentAnimData.frameHeight, // Altura do frame a ser cortado
+                        -character.width / 2, // Posição X no canvas (ajustada para o espelhamento)
+                        0, // Posição Y no canvas (relativa ao translate)
+                        character.width,     // Largura para desenhar no canvas
+                        character.height     // Altura para desenhar no canvas
+                    );
+                } else {
+                    // Desenho normal se não estiver espelhado
+                    ctx.drawImage(
+                        currentAnimData.image, // Usa a imagem específica da animação
+                        frame.sx, // Source X no sprite sheet
+                        frame.sy, // Source Y no sprite sheet (sempre 0 para arquivos separados)
+                        currentAnimData.frameWidth,  // Largura do frame a ser cortado
+                        currentAnimData.frameHeight, // Altura do frame a ser cortado
+                        character.x,         // Posição X no canvas
+                        character.y,         // Posição Y no canvas
+                        character.width,     // Largura para desenhar no canvas
+                        character.height     // Altura para desenhar no canvas
+                    );
+                }
+
+                ctx.restore(); // Restaura o estado anterior do canvas
+            } else {
+                // Desenha um quadrado de fallback se a imagem da animação não carregar
+                ctx.fillStyle = 'red';
+                ctx.fillRect(character.x - (character.width || 50) / 2, character.y - (character.height || 50) / 2, character.width || 50, character.height || 50); // Fallback size
+                ctx.fillStyle = 'white';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Erro!', character.x, character.y);
+            }
+        }
+
+        // Loop principal do jogo
+        function gameLoop(currentTime) {
+            updateGame(currentTime); // Atualiza a lógica da animação
+            drawGame();   // Redesenha os elementos
+            requestAnimationFrame(gameLoop); // Solicita o próximo frame
+        }
+
+        // Event Listeners para capturar o pressionar e soltar das teclas
+        window.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.key)) {
+                keys[e.key] = true;
+                e.preventDefault(); // Previne o comportamento padrão da seta (rolagem da página)
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) {
+                keys[e.key] = false;
+            }
+        });
+
+        // Inicia o carregamento das imagens e, em seguida, o loop do jogo
+        window.onload = () => {
+            // O gameLoop será iniciado em checkAllImagesLoaded após todas as imagens carregarem.
+        };
+    </script>
+</body>
+</html>
+
