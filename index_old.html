@@ -19,7 +19,7 @@
             overflow: hidden; /* Evita barras de rolagem */
         }
         canvas {
-            background-color: #4a5568; /* Cor de fundo do canvas (será coberta pela imagem) */
+            background-color: #4a5568; /* Cor de fundo do canvas */
             border: 2px solid #a0aec0; /* Borda do canvas */
             border-radius: 0.5rem;
             display: block;
@@ -61,13 +61,6 @@
             lastHorizontalDirection: 'left', // Armazena a última direção horizontal para manter o espelhamento
             lastVerticalDirection: 'down' // Armazena a última direção vertical para saber qual idle usar ('up' ou 'down')
         };
-
-        // Objeto para o fundo
-        const background = {
-            image: new Image()
-        };
-        // ATENÇÃO: Substitua este URL pela sua imagem de galáxia sem planetas!
-        background.image.src = "super_reincarnation.png";
 
         // Mapeamento das animações e seus frames. Cada animação tem sua própria imagem.
         const animations = {
@@ -132,8 +125,7 @@
 
         // Contador para garantir que todas as imagens foram carregadas
         let imagesLoadedCount = 0;
-        // Adicionamos 1 para a imagem de fundo
-        const totalImagesToLoad = Object.keys(animations).length + 1; 
+        const totalImagesToLoad = Object.keys(animations).length;
 
         // Variável para armazenar o tempo do último frame
         let lastFrameTime = 0; 
@@ -142,7 +134,7 @@
         function checkAllImagesLoaded() {
             imagesLoadedCount++;
             if (imagesLoadedCount === totalImagesToLoad) {
-                console.log("Todas as imagens de animação e fundo carregadas.");
+                console.log("Todas as imagens de animação carregadas.");
                 // Define as dimensões iniciais do personagem com base na animação inicial
                 const initialAnimData = animations[character.currentAnimation];
                 if (initialAnimData) {
@@ -162,7 +154,7 @@
             }
         }
 
-        // Adiciona event listeners para carregar cada imagem do personagem
+        // Adiciona event listeners para carregar cada imagem
         Object.values(animations).forEach(anim => {
             anim.image.onload = checkAllImagesLoaded;
             anim.image.onerror = () => {
@@ -170,13 +162,6 @@
                 checkAllImagesLoaded();
             };
         });
-
-        // Adiciona event listener para carregar a imagem de fundo
-        background.image.onload = checkAllImagesLoaded;
-        background.image.onerror = () => {
-            console.error(`Erro ao carregar a imagem de fundo: ${background.image.src}.`);
-            checkAllImagesLoaded();
-        };
 
         // Função para atualizar o estado do jogo (movimentação e animação)
         function updateGame(currentTime) {
@@ -286,17 +271,7 @@
             // Limpa o canvas a cada frame
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 1. Desenha o fundo primeiro
-            if (background.image.complete && background.image.naturalWidth !== 0) {
-                ctx.drawImage(background.image, 0, 0, canvas.width, canvas.height);
-            } else {
-                // Fallback para fundo sólido se a imagem não carregar
-                ctx.fillStyle = '#1a202c'; // Cor de fundo padrão
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
-
-
-            // 2. Desenha o personagem
+            // Desenha o personagem
             const currentAnimData = animations[character.currentAnimation];
             // Verifica se a imagem da animação atual e o frame existem
             if (currentAnimData && currentAnimData.image.complete && currentAnimData.image.naturalWidth !== 0 &&
